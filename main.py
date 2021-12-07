@@ -1,8 +1,10 @@
 import pandas as pd
 import os
 import spacy
+from sklearn.decomposition import LatentDirichletAllocation
+from sklearn.feature_extraction.text import CountVectorizer
 from tools import print_issue, tfidf_embed, preprocess_manual, print_onissue_events, print_relatedissue_events, extract_entity_by_label,\
-     extract_entity_by_index, spacy_tokenizer, print_issue, merge_sents
+     extract_entity_by_index, spacy_tokenizer, print_issue, merge_sents, related_issue_event, most_related_docs
 
 # 1. Read data
 data_dir = 'data/'
@@ -24,7 +26,6 @@ print("\t2016: Pyeongyang broadcasting messages, Chickens death in Chungcheong, 
 print("\t2017: Cold wave, dinosaur footprint, adhesive patch, lowest birthrate, the Stellar Daisy ship missing, bird flu outbreak, art connoisseurs and city officials gathered at Seoul City Hall,  Bang Tae-hyun taking a bribe,mosquito-borne virus, Pyeongyang broadcasting messages")
 print()
 
-# 3. Print On-Issue events
 # Load large spacy model 
 nlp = spacy.load('en_core_web_lg')
 
@@ -42,27 +43,44 @@ sents_nk = merge_sents(df_nk, 100).tolist()
 # Concatenate politics sentence in the same label group id (label 1939)
 sents_politics = merge_sents(df_politics, 1939).tolist()
 
-# Preprocessed
+# 3.1 Print On-Issue events : North Korea Missile Test
 sents_nk = list(map(preprocess_manual, sents_nk))
 print_issue("North Korea Missile Test")
 print_onissue_events(df_nk, label=100)
 extract_entity_by_label(sents_nk, df_nk, 100)
 
-# Preprocessed
+# 3.2 Print On-Issue events : President Park Geun-hye Middle-East tour
 sents_politics = list(map(preprocess_manual, sents_politics))
 print_issue("President Park Geun-hye Middle-East tour")
 print_onissue_events(df_politics, label=1939)
 extract_entity_by_label(sents_politics, df_politics, 1939)
 
-# 4. Print Related-Issue events
-nk_related_issue_index = [22641, 18742, 9502, 19477, 13014]
+# 4.1 Print Related-Issue events : North Korea Missile Test
+nk_vectorizer = CountVectorizer(tokenizer=spacy_tokenizer)
+nk_data_vectorized = nk_vectorizer.fit_transform(df_nk['agg_title_body'])
+nk_lda_components = 50
+nk_lda = LatentDirichletAllocation(n_components=nk_lda_components, random_state=0)
+nk_lda.fit(nk_data_vectorized)
+nk_doc_topic_dist = pd.DataFrame(nk_lda.transform(nk_data_vectorized))
+
+nk_related_issue_index = related_issue_event(5, ['missile'], df_nk, nk_doc_topic_dist, nk_lda, nk_vectorizer, n_top_words=10)
 sents_nk = [ ' '.join(spacy_tokenizer(s)) for s in df.iloc[nk_related_issue_index].sort_values(by=['time'])['body']]
 print_issue("North Korea Missile Test")
 print_relatedissue_events(df, nk_related_issue_index)
 extract_entity_by_index(sents_nk, df, nk_related_issue_index)
 
-p_related_issue_index = [8471,15914,17845,20506,22807]
+# 4.2 Print Related-Issue events : President Park Geun-hye Middle-East tour
+p_vectorizer = CountVectorizer(tokenizer=spacy_tokenizer)
+p_data_vectorized = p_vectorizer.fit_transform(df_politics['agg_title_body'])
+p_lda_components = 50
+p_lda = LatentDirichletAllocation(n_components=p_lda_components, random_state=0)
+p_lda.fit(p_data_vectorized)
+p_doc_topic_dist = pd.DataFrame(p_lda.transform(p_data_vectorized))
+
+p_related_issue_index_1 = related_issue_event(2, ['president','park'], df_politics, p_doc_topic_dist, p_lda, p_vectorizer, n_top_words=10)
+p_related_issue_index_2 = related_issue_event(3, ['middle','east'], df_politics, p_doc_topic_dist, p_lda, p_vectorizer, n_top_words=10)
+p_related_issue_index = p_related_issue_index_1 + p_related_issue_index_2
 sents_p = [ ' '.join(spacy_tokenizer(s)) for s in df.iloc[p_related_issue_index].sort_values(by=['time'])['body']]
 print_issue("President Park Geun-hye Middle-East tour")
 print_relatedissue_events(df, p_related_issue_index)
-extract_entity_by_index(sents_nk, df, p_related_issue_index)
+extract_entity_by_index(sents_p, df, p_related_issue_index)

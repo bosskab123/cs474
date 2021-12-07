@@ -96,37 +96,10 @@ def text_cleaning(s: str):
         s = re.sub(key, value, s)
     return s
 
-# Using spacy to preprocess
-def preprocess_spacy(s: str):
-    # Change similar terms to the same term
-    new_str = text_cleaning(s)
-    doc = nlp(s)
-    # Group tokens
-    matcher = Matcher(nlp.vocab)
-    token_groupup_pattern = [
-        [{"LOWER": "the"}, {"LOWER": "united"}, {"LOWER": "nations"}],
-        [{"LOWER": "the"}, {"LOWER": "united"}, {"LOWER": "states"}],
-        [{"LOWER": "north"}, {"LOWER": "korea"}],
-        [{"LOWER": "south"}, {"LOWER": "korea"}],
-    ]
-    matcher.add("TermGroup",token_groupup_pattern)
-    matches = matcher(doc)
-    merge_doc = []
-    for nid, start, end in matches:
-        merge_doc.append((start,end))
-    with doc.retokenize() as retokenizer:
-        for i in range(len(merge_doc)-1,-1,-1):
-            retokenizer.merge(doc[merge_doc[i][0]:merge_doc[i][1]])
-        
-    # Remove all stopword, punctuation, number
-    tokens = [ token for token in doc if not token.is_stop and not token.is_punct and not token.like_num]
-    new_str = ' '.join([ token.lemma_.lower() for token in tokens ])
-    return new_str, tokens, doc
-
 def spacy_tokenizer(s: str):
     # Change similar terms to the same term
     new_str = text_cleaning(s)
-    doc = nlp(s)
+    doc = nlp(new_str)
     # Group tokens
     matcher = Matcher(nlp.vocab)
     token_groupup_pattern = [
@@ -338,7 +311,7 @@ def extract_entity_by_label(sents, df, label=100):
     
     event = df[df.label == label]['title'].iloc[::-1].values.tolist()
     
-    for i in reversed(range(len(sents))):
+    for i in range(len(sents)):
         doc = nlp(sents[i])
         for ent in doc.ents:
             word = ent.text.title()
@@ -357,6 +330,7 @@ def extract_entity_by_label(sents, df, label=100):
         print("- Place: ", ", ".join([i for i in ent_loc]))
         print()
 
+# Print on issue events
 def print_onissue_events(df, label=100):
     event = df[df.label == label]['title'].iloc[::-1].values.tolist()
     print("[ On-Issue Events ]\n")
@@ -392,8 +366,34 @@ def extract_entity_by_index(sents, df, index):
         print("- Place: ", ", ".join([i for i in ent_loc]))
         print()
 
+# Print related issue event
 def print_relatedissue_events(df, index):
     event = df.iloc[index].sort_values(by=['time'])['title'].tolist()
     print("[ Related-Issue Events ]\n")
     print(", ".join([i for i in event]))
     print()
+
+# Get most related document to the topic
+def most_related_docs(df, doc_topic_dist, topic_index, num_docs=5):
+    if str(topic_index) in doc_topic_dist.columns:
+        sorted_doc = doc_topic_dist.sort_values(by=[str(topic_index)], ascending=False)
+    elif int(topic_index) in doc_topic_dist.columns:
+        sorted_doc = doc_topic_dist.sort_values(by=[int(topic_index)], ascending=False)
+    return df.iloc[sorted_doc[:num_docs].index]
+
+#Select 5 topics that no word missile included in top 10 words
+def related_issue_event(num_event, unwanted_word, df, doc_topic_dist, model, vectorizer, n_top_words):
+    feature_names = vectorizer.get_feature_names_out()
+    candidate_topic_idx = []
+    for topic_idx, topic in enumerate(model.components_):
+        a_set = set(unwanted_word)
+        b_set = set([ feature_names[i] for i in topic.argsort()[:-n_top_words - 1:-1]])
+        if not (a_set & b_set):
+            candidate_topic_idx.append(topic_idx)
+    candidate_event_idx = []
+
+    for candidate in candidate_topic_idx:
+        candidate_event_idx.append(most_related_docs(df, doc_topic_dist, candidate, num_docs=1).index.tolist()[0])
+        if len(candidate_event_idx) > num_event:
+            break
+    return candidate_event_idx
