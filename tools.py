@@ -347,7 +347,7 @@ def extract_entity_by_index(sents, df, index):
     
     event = df.iloc[index].sort_values(by=['time'])['title'].tolist()
     
-    for i in reversed(range(len(sents))):
+    for i in range(len(sents)):
         doc = nlp(sents[i])
         for ent in doc.ents:
             word = ent.text.title()
@@ -359,8 +359,9 @@ def extract_entity_by_index(sents, df, index):
                 ent_org.append(word)
             elif ent.label_ in ['GPE', 'LOC']:
                 ent_loc.append(word)
-        
-        print("Event: ", event[i])
+                
+        title = re.sub("[\(\[].*?[\)\]]", "", event[i])
+        print("Event: ", title)
         print("- Person: ", ", ".join([i for i in ent_per]))
         print("- Organization: ", ", ".join([i for i in ent_org]))
         print("- Place: ", ", ".join([i for i in ent_loc]))
@@ -369,6 +370,9 @@ def extract_entity_by_index(sents, df, index):
 # Print related issue event
 def print_relatedissue_events(df, index):
     event = df.iloc[index].sort_values(by=['time'])['title'].tolist()
+    # Remove all parenthesis and word inside
+    event = [ re.sub("[\(\[].*?[\)\]]", "", e) for e in event ]
+
     print("[ Related-Issue Events ]\n")
     print(", ".join([i for i in event]))
     print()
@@ -394,6 +398,6 @@ def related_issue_event(num_event, unwanted_word, df, doc_topic_dist, model, vec
 
     for candidate in candidate_topic_idx:
         candidate_event_idx.append(most_related_docs(df, doc_topic_dist, candidate, num_docs=1).index.tolist()[0])
-        if len(candidate_event_idx) > num_event:
+        if len(candidate_event_idx) >= num_event:
             break
     return candidate_event_idx
